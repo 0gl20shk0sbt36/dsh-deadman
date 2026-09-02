@@ -1,0 +1,11 @@
+- insert:
+    - id: timer-task
+      name: 'dsh-timer-task'
+      config:
+        # 触发后等待 veto 的宽限窗口(秒): 所有 agent 空闲后, 窗口内无人 veto 才执行动作
+        vetoWindowSeconds: 60
+        # 定时器检查周期(秒)
+        checkIntervalSeconds: 20
+        # 可选覆盖: 数据目录默认在 ~/.dsh/plugins/dsh-timer-task/
+        # vetoDir: '/your/path/veto'
+        # persistFile: '/your/path/tasks.json'

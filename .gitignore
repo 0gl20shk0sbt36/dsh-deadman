@@ -1,0 +1,6 @@
+node_modules/
+pnpm-lock.yaml
+tasks.json
+veto/
+*.log
+.DS_Store
