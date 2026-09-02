@@ -1,6 +1,6 @@
 {
   "name": "dsh-timer-task",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DSH plugin: agent-schedulable recurring timer tasks with veto. When a task fires, the owning session (or its blocking subagent) is prompted and may veto (timer_veto tool or marker file); the command runs only when nobody vetoes.",
   "type": "module",
   "main": "lib/index.js",
