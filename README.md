@@ -7,12 +7,23 @@ A DeepSeek Harness (dsh) plugin that lets the agent schedule recurring timer tas
 ## 功能特性 / Features
 
 - 三个模型可调用工具 / Three model-facing tools:
-  - `timer_schedule` — 设置定时任务（一次性或重复型）
+  - `timer_schedule` — 设置定时任务，三种生命周期（见下）
   - `timer_cancel` — 取消任务
   - `timer_veto` — 阻止本次触发
-- 触发前注入询问（主代理或活跃子代理），子代理可用 bash 标记文件 veto
+- 触发前注入询问（主代理或活跃子代理），提示词包含任务目的（`description`）与本次 veto 的后果
 - 动态 veto 窗口：只要有 agent 仍在运行（工作未完成）就自动延长，全部空闲后再走固定宽限
+- 执行完成后向设置会话注入结果通知
 - 任务持久化到磁盘，dsh 重启不丢
+
+## 任务生命周期 / Task lifecycles
+
+| 模式 | 参数 | veto 后 | 执行成功后 |
+|---|---|---|---|
+| 一次性 | （默认） | 任务结束，不再询问 | 任务结束 |
+| **执行即收工**（最常用） | `untilDone: true` | 每 `interval_minutes` 重新询问 | **任务自动结束** |
+| 周期循环 | `repeat: true` | 每 `interval_minutes` 重新询问 | 继续循环，直到 `timer_cancel` |
+
+`description` 参数用于说明任务目的（如"编译完成后关闭云构建实例"），每次触发都会随提示注入给代理，代理无需自行猜测。
 
 ## 典型场景 / Typical use case
 
