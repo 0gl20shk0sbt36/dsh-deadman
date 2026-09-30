@@ -104,6 +104,7 @@ Web / 桌面端：在插件页启用 **dsh-deadman**。CLI：`dsh plugin --profi
 - `progressScope: owner` 只统计属主与它的**直接**子代理，更深层的孙代理不计入。
 - 提问阻塞闸门依赖会话投影 `userQuestions`；宿主没有该投影时该闸门不生效（只会走其它闸门，不会误判）。
 - 不保证"恰好执行一次"：宿主崩溃可能留下已执行但未记账的任务。
+- 三条闸门（`progressScope` 两种取值的差别、提问阻塞放行、`maxHoldMinutes` 到顶放行）已由 `npm test` 的假宿主测试套件覆盖（`tests/fake-host.mjs`，确定性复现）；**未覆盖**的是"真实会话里等满 600 秒提问超时"这一长等待过程，以及多进程布防。
 
 ## 安全
 

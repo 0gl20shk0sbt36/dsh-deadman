@@ -104,6 +104,7 @@ Override the bundle defaults in the profile's `cordis.patch.yml`:
 - `progressScope: owner` counts the owner and its **direct** subagents only; deeper descendants are not counted.
 - The question gate depends on the `userQuestions` session projection; without that projection the gate is simply inactive (the other gates still apply, nothing is misjudged).
 - Exactly-once execution is not guaranteed: a host crash can leave an executed action unrecorded.
+- The three gates (both `progressScope` values, the question-block release, and the `maxHoldMinutes` ceiling) are covered by the fake-host suite in `npm test` (`tests/fake-host.mjs`, deterministic). **Not** covered: the real 600-second question timeout inside a live session, and arming from several processes.
 
 ## Safety
 

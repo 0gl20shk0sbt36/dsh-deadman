@@ -25,6 +25,9 @@
     "watchdog",
     "scheduler"
   ],
+  "scripts": {
+    "test": "node tests/fake-host.mjs"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
