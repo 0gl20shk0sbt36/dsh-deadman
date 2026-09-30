@@ -1,84 +1,125 @@
-# dsh-timer-task
+# dsh-deadman
 
-DeepSeek Harness (dsh) 定时任务插件：让代理自己编排"到点执行某命令"的重复任务，触发前会询问代理是否阻止（veto），代理无法响应时才真正执行。
+[English](README.en.md) | 中文
 
-A DeepSeek Harness (dsh) plugin that lets the agent schedule recurring timer tasks ("run this command when due"). Before a firing executes, the owning session (or its blocking subagent) is prompted and may veto it; only when nobody vetoes does the action run.
+DeepSeek Harness（dsh）的**死手开关**（deadman switch）：布防后定期巡检"还有人活着干活吗"，没人报活就执行你指定的命令。
 
-## 功能特性 / Features
+适合无人值守的长任务——夜间编译、训练、批量渲染、云实例跑批。常规"到点无条件关机"会误杀还在跑的工作；死手开关反过来问一句：**还有人在推进吗？没有就把资源收掉。**
 
-- 三个模型可调用工具 / Three model-facing tools:
-  - `timer_schedule` — 设置定时任务，三种生命周期（见下）
-  - `timer_cancel` — 取消任务
-  - `timer_veto` — 阻止本次触发
-- 触发前注入询问（主代理或活跃子代理），提示词包含任务目的（`description`）与本次 veto 的后果
-- 动态 veto 窗口：只要有 agent 仍在运行（工作未完成）就自动延长，全部空闲后再走固定宽限
-- 执行完成后向设置会话注入结果通知
-- 任务持久化到磁盘，dsh 重启不丢
+## 与 dsh 内置「自动化任务」的区别
 
-## 任务生命周期 / Task lifecycles
-
-| 模式 | 参数 | veto 后 | 执行成功后 |
-|---|---|---|---|
-| 一次性 | （默认） | 任务结束，不再询问 | 任务结束 |
-| **执行即收工**（最常用） | `untilDone: true` | 每 `interval_minutes` 重新询问 | **任务自动结束** |
-| 周期循环 | `repeat: true` | 每 `interval_minutes` 重新询问 | 继续循环，直到 `timer_cancel` |
-
-`description` 参数用于说明任务目的（如"编译完成后关闭云构建实例"），每次触发都会随提示注入给代理，代理无需自行猜测。
-
-## 典型场景 / Typical use case
-
-夜间无人值守跑长任务（如编译）时，让代理设置一个"每 30 分钟自动关机"的定时任务：
-
-```text
-timer_schedule(name="auto-shutdown",
-  command="bash /path/to/your/stop-instances.sh",
-  delay_minutes=30, repeat=true)
-```
-
-- 任务还在跑（子代理活跃）→ 触发时子代理收到注入，判断"工作未完成"→ veto → 跳过本次
-- 全部工作完成 / 代理停摆（如 API 余额耗尽）→ 无人 veto → 自动执行关机 → 止损
-
-## 安装 / Install
-
-```bash
-# 从 GitHub 安装
-dsh plugin --profile <name> add github:YOUR_NAME/dsh-timer-task
-
-# 或本地路径
-dsh plugin --profile <name> add /path/to/dsh-timer-task
-```
-
-在 profile 的 `cordis.patch.yml`（或插件自带 patch）中启用 `timer-task` 条目后重启 dsh。
-
-## 配置 / Configuration
-
-| 配置项 | 默认 | 说明 |
+| | dsh 内置 `dsh-schedule` | dsh-deadman |
 |---|---|---|
-| `vetoWindowSeconds` | 60 | 全部 agent 空闲后，无人 veto 的宽限窗口（秒） |
-| `checkIntervalSeconds` | 20 | 定时器检查周期（秒） |
-| `vetoDir` | `~/.dsh/plugins/dsh-timer-task/veto` | 全局 veto 标记目录（插件进程可写） |
-| `persistFile` | `~/.dsh/plugins/dsh-timer-task/tasks.json` | 任务持久化文件 |
+| 到点做什么 | 把一条消息投回会话收件箱，**由模型决定干什么** | **直接执行 shell 命令**，不经模型 |
+| 阻止机制 | 无 | **报活闸门**：有 agent 在推进就自动顺延，无人报活才执行 |
+| 典型场景 | 日程提醒、叫醒会话 | 无人值守止损：活儿干完/挂掉了，自动关机 |
 
-## 工作原理 / How it works
+两者互补，不冲突。内置那套的前提是"模型还活着能处理消息"；资源该被收回的时刻，往往正是模型已经挂掉或额度耗尽的时刻。
 
-1. 到点触发 → 向设置任务的会话注入提示（`agent.inject()`，通知型，不打断工作流）
-2. 若设置者正在跑子代理 → 提示注入到活跃子代理
-3. 等待 veto 窗口：任何 agent 仍在 running 就持续延长；全部 idle 后走完 `vetoWindowSeconds`
-4. 窗口内无人 veto → 执行 `command`；有人 veto → 跳过本次（重复型任务重排下一周期）
+## 安装
 
-veto 通道（任一即可）：
-- `timer_veto` 工具（主代理/有该工具的代理）
-- bash 在工作区创建标记文件 `.timer-veto-<name>`（子代理 toolFilter 白名单场景）
-- 全局 `vetoDir` 下创建 `<name>` 文件（外部手动）
+要求 dsh **0.2.0-rc.2**（`peerDependencies` 精确对齐；版本不匹配时 dsh 会拒绝安装并给出提示）。
 
-任务数据含会话归属，默认存于用户家目录（`os.homedir()` 解析，可通过配置覆盖）；动作命令由使用方自行指定，插件本身不内置任何外部调用。
+```sh
+# 本地路径
+dsh plugin --profile web add /path/to/dsh-deadman
 
-## 安全说明 / Security notes
+# 或从 GitHub
+dsh plugin --profile web add github:OWNER/dsh-deadman
+```
 
-- 插件执行的命令完全由 `timer_schedule` 的调用方（代理/用户）指定——请只调度你信任的命令
-- 默认语义是"无人 veto 则执行"（fail-open 倾向），请为关键动作设置合理的重复周期与宽限
-- 数据文件仅本用户可写；发布版本不含任何个人配置或凭据
+Web / 桌面端：在插件页启用 **dsh-deadman**。CLI：`dsh plugin --profile <name> remove dsh-deadman` 卸载。
 
-## License
+> 装在**长期运行**的 profile（如 `web`）里才有意义，原因见[已知限制](#已知限制)。
+> 依赖一律精确锁定 0.2.0-rc.2：从 GitHub 安装时 pnpm 会按 `dependencies` 自动装好；用**本地路径**安装时 pnpm 走 `link:`，不会解析依赖，所以插件目录里必须先有 `node_modules`（在插件目录执行一次 `pnpm install`）。
+
+## 模型工具
+
+| 工具 | 作用 |
+|---|---|
+| `deadman_arm` | 布防：`name` / `command` / `after_minutes` / `interval_minutes` / `description`。首次巡检在 `after_minutes` 后；被报活则 `interval_minutes` 后重新巡检；**执行成功一次即收工**，无需事后取消 |
+| `deadman_hold` | 报活："我还在干活"，跳过本轮，按周期重排。**任何会话都能报活**（fail-safe 语义） |
+| `deadman_disarm` | 撤防。仅布防会话（或其直接子代理）可用；其他会话需显式 `force=true`，且会被记入日志 |
+
+任务名在进程内**全局唯一**；同名布防会被拒绝，并告诉你被哪个会话占着。
+
+斜杠命令：`/deadman`（本会话）· `/deadman all`（全部会话）· `/deadman cancel <name>`。
+
+## 一次触发的判定顺序
+
+1. **解析属主会话**：先 `ctx.agents.get()`；会话没打开就 `ctx.agents.resume()` 把它**恢复出来**再投递（只要会话还存在，提示就不会掉进黑洞）。
+2. **投递巡检询问**：用 `agent.send(message, "next-step", true)` —— 运行中的 agent 在下个步骤边界看到，空闲的会被唤醒。询问文案里明确要求对方**不要向用户提问、不要请求确认**，只能二选一：报活或保持沉默。
+3. **巡检循环**，判据是**活跃度**而不是状态：
+   - 任一 agent 自上次巡检有新事件（`session.seq` 推进）⇒ 还在推进，继续等；
+   - 全部无推进 ⇒ 开始计宽限 `holdWindowSeconds`；
+   - 有"待用户回答的提问"（`userQuestions` 投影里 `state === 'open'`）⇒ 单独计时，最长 `questionBlockSeconds` 后放行；
+   - 从触发那一刻起的总上限 `maxHoldMinutes`，到顶一律放行（fail-open）。
+4. **放行** ⇒ 执行命令；成功后**任务自动收工**并给属主留一条通知；被报活 ⇒ 重排下一周期。
+
+## 报活通道
+
+1. `deadman_hold` 工具（主代理、或被授予该工具的子代理）；
+2. 在当前工作目录建标记文件 `.deadman-hold-<name>`（子代理工具白名单里没有 `deadman_hold` 时可用）；
+3. 在插件数据目录 `hold/` 下建以任务名命名的文件（外部脚本、人工介入）。
+
+## 多会话行为
+
+- 每个任务记着自己的**属主会话**，只向属主投递巡检询问；属主正在运行时，也会顺带通知其它正在运行的 agent（现场执行者）。
+- 活跃度判据默认是**全局**的（`progressScope: global`）：只要整机还有活在推进，所有看门狗都往后顺延——对"自动关机"这是正确语义。想让某个看门狗只看自己那一伙，设 `progressScope: owner`。
+- 多个看门狗同时到期会**并发执行**各自的命令（无全局锁）；需要串行就打开 `serializeCommands`。
+- 报活无权限限制（谁都能喊停），**撤防有权限限制**（见 `deadman_disarm`）。
+
+## 配置
+
+写在 profile 的 `cordis.patch.yml` 里覆盖 bundle 默认值：
+
+```yaml
+- id: deadman
+  config:
+    holdWindowSeconds: 60
+```
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| `holdWindowSeconds` | `60` | 全部 agent 无推进后，再等多久执行 |
+| `checkIntervalSeconds` | `20` | 巡检周期 |
+| `maxHoldMinutes` | `30` | 从触发起的总上限，到顶一律放行 |
+| `questionBlockSeconds` | `600` | 被"待回答的提问"卡住时的最长等待，到点放行 |
+| `onUndeliverable` | `execute` | 属主会话彻底投递不到时：`execute` 照常执行 / `skip` 放弃本轮 |
+| `progressScope` | `global` | 活跃度判据范围：`global` 整机 / `owner` 仅属主及其直接子代理 |
+| `serializeCommands` | `false` | 多条动作命令是否排队串行执行 |
+| `commandTimeoutSeconds` | `300` | 单条动作命令的执行超时 |
+| `dataDir` | `$DSH_HOME/plugins/dsh-deadman` | 数据目录（`tasks.json` + `hold/`） |
+
+## 数据与持久化
+
+- `tasks.json`：任务表，插件启动时载入，**重启不丢**（逾期的一次性任务会在下次巡检立刻处理）。
+- `hold/`：外部报活标记目录。
+- 字段：`name` / `command` / `description` / `dueAt` / `intervalMin` / `sessionId` / `createdAt` / `firedCount`。
+
+## 已知限制
+
+- **只在长期运行的实例里有效**：调度器活在 dsh 进程内。在 headless 一次性进程里布防，进程退出后没人巡检（除非之后有长驻实例启动时把它载入）。
+- **单写者假设**：`tasks.json` 是普通 JSON 文件，多进程同时写会互相覆盖。不要在多进程里同时布防；本插件按"只装长期运行 profile"设计。
+- `progressScope: owner` 只统计属主与它的**直接**子代理，更深层的孙代理不计入。
+- 提问阻塞闸门依赖会话投影 `userQuestions`；宿主没有该投影时该闸门不生效（只会走其它闸门，不会误判）。
+- 不保证"恰好执行一次"：宿主崩溃可能留下已执行但未记账的任务。
+
+## 安全
+
+- 执行的命令**完全由布防方指定**：只调度你信任的命令。
+- 默认语义是 **fail-open**（无人报活即执行）——这正是死手开关的本意，但请为关键动作设定合理的巡检周期与宽限。
+- 插件不联网、不收集数据；数据只写在本机数据目录。
+
+## 开发
+
+```sh
+pnpm install            # 依赖已随仓库锁定在 0.2.0-rc.2
+node --check lib/index.js
+```
+
+改动代码后**必须重启 dsh 进程**才生效（ESM 模块在启动时载入，热更新只覆盖 profile 配置层）。
+
+## 许可
 
 MIT

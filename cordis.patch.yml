@@ -1,11 +1,27 @@
+# dsh-deadman — bundle patch
+#
+# 插入看门狗条目。所有凭据/路径都不写死在这里：数据目录默认落在
+# $DSH_HOME/plugins/dsh-deadman, 也可用下面的 dataDir 覆盖。
 - insert:
-    - id: timer-task
-      name: 'dsh-timer-task'
+    - id: deadman
+      name: 'dsh-deadman'
       config:
-        # 触发后等待 veto 的宽限窗口(秒): 所有 agent 空闲后, 窗口内无人 veto 才执行动作
-        vetoWindowSeconds: 60
-        # 定时器检查周期(秒)
+        # 全部 agent 都"没有推进"之后, 等待多久才执行(秒)
+        holdWindowSeconds: 60
+        # 巡检周期(秒)
         checkIntervalSeconds: 20
-        # 可选覆盖: 数据目录默认在 ~/.dsh/plugins/dsh-timer-task/
-        # vetoDir: '/your/path/veto'
-        # persistFile: '/your/path/tasks.json'
+        # 总上限(分钟): 从触发那一刻起, 最多被拖这么久, 到顶一律放行
+        maxHoldMinutes: 30
+        # 被"待用户回答的提问"卡住时, 最长等待(秒), 到点放行
+        questionBlockSeconds: 600
+        # 会话彻底投递不到时(不存在/恢复失败): execute 照常执行 | skip 放弃本次
+        onUndeliverable: execute
+        # 活跃度判据范围: global 整机安静才执行(默认, 自动关机场景该用这个)
+        #                | owner 只看属主会话及其直接子代理是否推进
+        progressScope: global
+        # 多条动作命令是否排队串行执行(默认 false = 并发)
+        serializeCommands: false
+        # 单条动作命令的执行超时(秒)
+        commandTimeoutSeconds: 300
+        # 可选: 数据目录默认 $HOME/.dsh/plugins/dsh-deadman
+        # dataDir: '/your/path'
