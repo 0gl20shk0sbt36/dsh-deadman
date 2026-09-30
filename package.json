@@ -1,6 +1,6 @@
 {
   "name": "dsh-deadman",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DSH deadman switch: run a command unless a living agent keeps holding it off. Arms a watchdog that asks the owning session on every firing, skips when somebody holds, and acts when nobody answers.",
   "type": "module",
   "main": "lib/index.js",
